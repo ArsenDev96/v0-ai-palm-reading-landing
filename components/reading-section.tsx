@@ -15,50 +15,35 @@ import {
   Check,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { submitPalmReading, type ReadingLine } from "@/app/actions/palm-reading"
 
 type Stage = "idle" | "analyzing" | "gated" | "revealed"
 
-const lines = [
-  {
-    icon: Heart,
-    name: "Heart Line",
-    summary:
-      "Deep and unbroken — you love wholeheartedly and form lasting, loyal bonds.",
-  },
-  {
-    icon: Brain,
-    name: "Head Line",
-    summary:
-      "Long and clear — a sharp, analytical mind that thrives on curiosity and ideas.",
-  },
-  {
-    icon: Activity,
-    name: "Life Line",
-    summary:
-      "Strong and curved — vitality, resilience, and a zest for new adventures.",
-  },
-  {
-    icon: Sparkles,
-    name: "Fate Line",
-    summary:
-      "Well-defined — your path is purposeful, with a turning point on the horizon.",
-  },
-]
+const lineIcons: Record<string, typeof Heart> = {
+  "Heart Line": Heart,
+  "Head Line": Brain,
+  "Life Line": Activity,
+  "Fate Line": Sparkles,
+}
 
 export function ReadingSection() {
   const [stage, setStage] = useState<Stage>("idle")
   const [preview, setPreview] = useState<string | null>(null)
+  const [file, setFile] = useState<File | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const [email, setEmail] = useState("")
   const [emailError, setEmailError] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [results, setResults] = useState<ReadingLine[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) return
     const url = URL.createObjectURL(file)
     setPreview(url)
+    setFile(file)
     setStage("analyzing")
-    // Simulate AI analysis
+    // Simulate AI analysis before showing the email gate
     setTimeout(() => setStage("gated"), 2600)
   }, [])
 
@@ -72,21 +57,41 @@ export function ReadingSection() {
     [handleFile],
   )
 
-  const onSubmitEmail = (e: React.FormEvent) => {
+  const onSubmitEmail = async (e: React.FormEvent) => {
     e.preventDefault()
     const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
     if (!valid) {
       setEmailError("Please enter a valid email address.")
       return
     }
+    if (!file) {
+      setEmailError("Your palm image is missing. Please re-upload.")
+      return
+    }
     setEmailError("")
+    setSubmitting(true)
+
+    const formData = new FormData()
+    formData.append("email", email)
+    formData.append("image", file)
+
+    const res = await submitPalmReading(formData)
+    setSubmitting(false)
+
+    if (!res.ok) {
+      setEmailError(res.error)
+      return
+    }
+    setResults(res.lines)
     setStage("revealed")
   }
 
   const reset = () => {
     setPreview(null)
+    setFile(null)
     setEmail("")
     setEmailError("")
+    setResults([])
     setStage("idle")
   }
 
@@ -226,9 +231,13 @@ export function ReadingSection() {
                 )}
                 <button
                   type="submit"
-                  className="h-12 w-full rounded-full bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                  disabled={submitting}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-70"
                 >
-                  Unlock my full reading
+                  {submitting && (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  )}
+                  {submitting ? "Saving your reading..." : "Unlock my full reading"}
                 </button>
                 <p className="text-center text-xs text-muted-foreground">
                   No spam. Unsubscribe anytime.
@@ -249,19 +258,22 @@ export function ReadingSection() {
                 The lines have spoken
               </h3>
               <ul className="mt-6 space-y-4">
-                {lines.map((line) => (
-                  <li key={line.name} className="flex gap-4">
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                      <line.icon className="size-5" aria-hidden="true" />
-                    </span>
-                    <div>
-                      <p className="font-semibold text-foreground">{line.name}</p>
-                      <p className="text-sm leading-relaxed text-muted-foreground">
-                        {line.summary}
-                      </p>
-                    </div>
-                  </li>
-                ))}
+                {results.map((line) => {
+                  const Icon = lineIcons[line.name] ?? Sparkles
+                  return (
+                    <li key={line.name} className="flex gap-4">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                        <Icon className="size-5" aria-hidden="true" />
+                      </span>
+                      <div>
+                        <p className="font-semibold text-foreground">{line.name}</p>
+                        <p className="text-sm leading-relaxed text-muted-foreground">
+                          {line.summary}
+                        </p>
+                      </div>
+                    </li>
+                  )
+                })}
               </ul>
               <button
                 onClick={reset}
