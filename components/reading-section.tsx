@@ -39,6 +39,55 @@ const lineIcons: Record<string, typeof Heart> = {
   "Marriage Line": HeartHandshake,
 }
 
+// Vercel caps Server Action request bodies at ~4.5MB, so we downscale the photo
+// in the browser before uploading. ~2000px on the long edge keeps the palm lines
+// crisp for the AI while bringing typical phone photos well under that limit.
+const MAX_UPLOAD_DIMENSION = 2000
+const UPLOAD_QUALITY = 0.85
+
+async function compressImage(file: File): Promise<File> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error("Could not read the image."))
+    reader.readAsDataURL(file)
+  })
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error("Could not decode the image."))
+    image.src = dataUrl
+  })
+
+  const scale = Math.min(
+    1,
+    MAX_UPLOAD_DIMENSION / Math.max(img.width, img.height),
+  )
+  const width = Math.round(img.width * scale)
+  const height = Math.round(img.height * scale)
+
+  const canvas = document.createElement("canvas")
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return file
+
+  // White backdrop so any PNG transparency doesn't turn black as JPEG.
+  ctx.fillStyle = "#ffffff"
+  ctx.fillRect(0, 0, width, height)
+  ctx.drawImage(img, 0, 0, width, height)
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", UPLOAD_QUALITY),
+  )
+  if (!blob) return file
+
+  return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", {
+    type: "image/jpeg",
+  })
+}
+
 export function ReadingSection() {
   const [stage, setStage] = useState<Stage>("idle")
   const [preview, setPreview] = useState<string | null>(null)
@@ -71,8 +120,17 @@ export function ReadingSection() {
     setPreview(url)
     setStage("analyzing")
 
+    // Shrink in-browser before the Server Action POST so large phone photos
+    // don't hit Vercel's ~4.5MB request-body limit. Falls back to the original.
+    let upload = file
+    try {
+      upload = await compressImage(file)
+    } catch {
+      upload = file
+    }
+
     const formData = new FormData()
-    formData.append("image", file)
+    formData.append("image", upload)
 
     try {
       const [res] = await Promise.all([
