@@ -4,17 +4,17 @@ const steps = [
   {
     icon: Upload,
     title: "Upload your palm",
-    desc: "Snap a clear photo of your dominant hand or drag and drop an existing image.",
+    desc: "Snap a clear, well-lit photo of your open hand, or drag and drop an existing image.",
   },
   {
     icon: ScanLine,
-    title: "AI maps your lines",
-    desc: "Our model traces your life, heart, head, and fate lines with precision.",
+    title: "AI reads your lines",
+    desc: "We check it's a readable palm, then interpret your heart, head, life, fate, sun, and marriage lines.",
   },
   {
     icon: Sparkles,
-    title: "Reveal your reading",
-    desc: "Receive a personalized interpretation of your character, love, and destiny.",
+    title: "Get your full reading",
+    desc: "See an instant glimpse on screen, then receive your complete personalized reading by email.",
   },
 ]
 

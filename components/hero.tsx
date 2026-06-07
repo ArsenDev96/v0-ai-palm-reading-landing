@@ -19,8 +19,9 @@ export function Hero() {
             What Does Your Palm Reveal About You?
           </h1>
           <p className="mx-auto mt-6 max-w-md text-pretty leading-relaxed text-muted-foreground md:mx-0">
-            Upload a photo of your hand and let our AI trace your life, heart,
-            and head lines — uncovering a personalized reading in seconds.
+            Upload a photo of your hand and let our AI read your heart, head,
+            life, and fate lines — for a personalized reading of love, success,
+            and destiny, delivered to your inbox.
           </p>
           <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row md:items-start md:justify-start">
             <a

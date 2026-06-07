@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Image from "next/image"
 import {
   Upload,
@@ -11,40 +11,91 @@ import {
   Brain,
   Activity,
   Sparkles,
+  Sun,
+  HeartHandshake,
+  Hand,
   RefreshCw,
-  Check,
+  MailCheck,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { submitPalmReading, type ReadingLine } from "@/app/actions/palm-reading"
+import { analyzePalm, revealReading } from "@/app/actions/palm-reading"
+import type { ReadingLine } from "@/lib/ai/palm"
 
-type Stage = "idle" | "analyzing" | "gated" | "revealed"
+type Stage = "idle" | "analyzing" | "gated" | "sent"
+
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024
+const ACCEPTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png"])
+// Keep the "analyzing" animation on screen for at least this long so it feels
+// like real work even when the upload finishes quickly.
+const MIN_ANALYZE_MS = 2200
 
 const lineIcons: Record<string, typeof Heart> = {
+  Overview: Hand,
   "Heart Line": Heart,
   "Head Line": Brain,
   "Life Line": Activity,
   "Fate Line": Sparkles,
+  "Sun Line": Sun,
+  "Marriage Line": HeartHandshake,
 }
 
 export function ReadingSection() {
   const [stage, setStage] = useState<Stage>("idle")
   const [preview, setPreview] = useState<string | null>(null)
-  const [file, setFile] = useState<File | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const [email, setEmail] = useState("")
-  const [emailError, setEmailError] = useState("")
+  const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  const [results, setResults] = useState<ReadingLine[]>([])
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [readingId, setReadingId] = useState<string | null>(null)
+  const [teaser, setTeaser] = useState<ReadingLine[]>([])
+  const [locked, setLocked] = useState<string[]>([])
 
-  const handleFile = useCallback((file: File) => {
-    if (!file.type.startsWith("image/")) return
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview)
+    }
+  }, [preview])
+
+  const handleFile = useCallback(async (file: File) => {
+    if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
+      setError("Please upload a JPG or PNG image.")
+      return
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      setError("Please upload an image smaller than 10MB.")
+      return
+    }
+
+    setError("")
     const url = URL.createObjectURL(file)
     setPreview(url)
-    setFile(file)
     setStage("analyzing")
-    // Simulate AI analysis before showing the email gate
-    setTimeout(() => setStage("gated"), 2600)
+
+    const formData = new FormData()
+    formData.append("image", file)
+
+    try {
+      const [res] = await Promise.all([
+        analyzePalm(formData),
+        new Promise((resolve) => setTimeout(resolve, MIN_ANALYZE_MS)),
+      ])
+
+      if (!res.ok) {
+        setError(res.error)
+        setPreview(null)
+        setStage("idle")
+        return
+      }
+
+      setReadingId(res.id)
+      setTeaser(res.teaser)
+      setLocked(res.locked)
+      setStage("gated")
+    } catch {
+      setError("Something went wrong. Please try again.")
+      setPreview(null)
+      setStage("idle")
+    }
   }, [])
 
   const onDrop = useCallback(
@@ -61,37 +112,37 @@ export function ReadingSection() {
     e.preventDefault()
     const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
     if (!valid) {
-      setEmailError("Please enter a valid email address.")
+      setError("Please enter a valid email address.")
       return
     }
-    if (!file) {
-      setEmailError("Your palm image is missing. Please re-upload.")
+    if (!readingId) {
+      setError("Your reading expired. Please re-upload.")
       return
     }
-    setEmailError("")
+    setError("")
     setSubmitting(true)
 
-    const formData = new FormData()
-    formData.append("email", email)
-    formData.append("image", file)
-
-    const res = await submitPalmReading(formData)
-    setSubmitting(false)
-
-    if (!res.ok) {
-      setEmailError(res.error)
-      return
+    try {
+      const res = await revealReading(readingId, email)
+      if (!res.ok) {
+        setError(res.error)
+        return
+      }
+      setStage("sent")
+    } catch {
+      setError("Something went wrong. Please try again.")
+    } finally {
+      setSubmitting(false)
     }
-    setResults(res.lines)
-    setStage("revealed")
   }
 
   const reset = () => {
     setPreview(null)
-    setFile(null)
     setEmail("")
-    setEmailError("")
-    setResults([])
+    setError("")
+    setReadingId(null)
+    setTeaser([])
+    setLocked([])
     setStage("idle")
   }
 
@@ -117,11 +168,12 @@ export function ReadingSection() {
               }}
               onDragLeave={() => setDragActive(false)}
               onDrop={onDrop}
-              onClick={() => inputRef.current?.click()}
+              onClick={() => document.getElementById("palm-input")?.click()}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") inputRef.current?.click()
+                if (e.key === "Enter" || e.key === " ")
+                  document.getElementById("palm-input")?.click()
               }}
               className={`flex aspect-[4/5] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center transition-colors ${
                 dragActive
@@ -142,9 +194,9 @@ export function ReadingSection() {
                 Upload hand image
               </span>
               <input
-                ref={inputRef}
+                id="palm-input"
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png"
                 className="sr-only"
                 onChange={(e) => {
                   const file = e.target.files?.[0]
@@ -188,6 +240,7 @@ export function ReadingSection() {
                 Your personalized palm analysis will appear here once you upload
                 an image.
               </p>
+              {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
             </div>
           )}
 
@@ -205,60 +258,19 @@ export function ReadingSection() {
 
           {stage === "gated" && (
             <div className="flex h-full flex-col justify-center">
-              <span className="flex size-12 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                <Lock className="size-6" aria-hidden="true" />
-              </span>
-              <h3 className="mt-5 font-serif text-3xl font-semibold text-foreground">
-                Your reading is ready
-              </h3>
-              <p className="mt-2 text-pretty leading-relaxed text-muted-foreground">
-                Enter your email to unlock your full personalized palm reading —
-                covering love, intellect, vitality, and destiny.
-              </p>
-              <form onSubmit={onSubmitEmail} className="mt-6 space-y-3">
-                <Input
-                  type="email"
-                  inputMode="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="h-12 bg-background"
-                  aria-label="Email address"
-                  aria-invalid={!!emailError}
-                />
-                {emailError && (
-                  <p className="text-sm text-destructive">{emailError}</p>
-                )}
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-70"
-                >
-                  {submitting && (
-                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  )}
-                  {submitting ? "Saving your reading..." : "Unlock my full reading"}
-                </button>
-                <p className="text-center text-xs text-muted-foreground">
-                  No spam. Unsubscribe anytime.
-                </p>
-              </form>
-            </div>
-          )}
-
-          {stage === "revealed" && (
-            <div>
               <div className="flex items-center gap-2 text-primary">
-                <Check className="size-5" aria-hidden="true" />
+                <Sparkles className="size-5" aria-hidden="true" />
                 <span className="text-sm font-medium uppercase tracking-widest">
-                  Reading unlocked
+                  Your reading is ready
                 </span>
               </div>
               <h3 className="mt-3 font-serif text-3xl font-semibold text-foreground">
-                The lines have spoken
+                Here&apos;s a glimpse
               </h3>
-              <ul className="mt-6 space-y-4">
-                {results.map((line) => {
+
+              {/* Teaser line(s) — the hook */}
+              <ul className="mt-5 space-y-4">
+                {teaser.map((line) => {
                   const Icon = lineIcons[line.name] ?? Sparkles
                   return (
                     <li key={line.name} className="flex gap-4">
@@ -274,10 +286,78 @@ export function ReadingSection() {
                     </li>
                   )
                 })}
+
+                {/* Locked lines — blurred to entice */}
+                {locked.map((name) => {
+                  const Icon = lineIcons[name] ?? Sparkles
+                  return (
+                    <li key={name} className="flex gap-4">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                        <Icon className="size-5" aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center gap-1.5 font-semibold text-foreground">
+                          {name}
+                          <Lock className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                        </p>
+                        <p className="select-none text-sm leading-relaxed text-muted-foreground blur-sm">
+                          Your full {name.toLowerCase()} insight is ready and
+                          waiting in your inbox.
+                        </p>
+                      </div>
+                    </li>
+                  )
+                })}
               </ul>
+
+              <form onSubmit={onSubmitEmail} className="mt-6 space-y-3">
+                <p className="text-sm font-medium text-foreground">
+                  Enter your email to get your full reading
+                </p>
+                <Input
+                  type="email"
+                  inputMode="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="h-12 bg-background"
+                  aria-label="Email address"
+                  aria-invalid={!!error}
+                />
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-70"
+                >
+                  {submitting && (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  )}
+                  {submitting ? "Sending your reading..." : "Email my full reading"}
+                </button>
+                <p className="text-center text-xs text-muted-foreground">
+                  No spam. Unsubscribe anytime.
+                </p>
+              </form>
+            </div>
+          )}
+
+          {stage === "sent" && (
+            <div className="flex h-full min-h-72 flex-col items-center justify-center text-center">
+              <span className="flex size-14 items-center justify-center rounded-full bg-primary/15 text-primary">
+                <MailCheck className="size-7" aria-hidden="true" />
+              </span>
+              <h3 className="mt-5 font-serif text-3xl font-semibold text-foreground">
+                Your full reading is on its way
+              </h3>
+              <p className="mt-3 max-w-sm text-pretty leading-relaxed text-muted-foreground">
+                We&apos;ve sent your complete palm reading to{" "}
+                <span className="font-medium text-foreground">{email}</span>.
+                Check your inbox ✨
+              </p>
               <button
                 onClick={reset}
-                className="mt-7 flex w-full items-center justify-center gap-2 rounded-full border border-border py-3 text-sm font-medium text-foreground transition-colors hover:bg-background"
+                className="mt-7 flex items-center justify-center gap-2 rounded-full border border-border px-6 py-3 text-sm font-medium text-foreground transition-colors hover:bg-background"
               >
                 <RefreshCw className="size-4" aria-hidden="true" />
                 Read another palm

@@ -20,8 +20,8 @@ export function SiteNav() {
           <a href="#reading" className="transition-colors hover:text-foreground">
             Get a reading
           </a>
-          <a href="#faq" className="transition-colors hover:text-foreground">
-            FAQ
+          <a href="#contact" className="transition-colors hover:text-foreground">
+            Contact
           </a>
         </div>
 
