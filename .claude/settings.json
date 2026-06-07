@@ -23,7 +23,15 @@
       "PowerShell(cmd /c \"nvm install 22.12.0 > %TEMP%\\\\nvm2.txt 2>&1 & type %TEMP%\\\\nvm2.txt\")",
       "Read(//c/Users/DoC/AppData/Roaming/nvm/**)",
       "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('deps:', JSON.stringify\\({...p.dependencies,...p.devDependencies},null,0\\)\\)\")",
-      "Bash(node -e \"console.log\\(require\\('./package.json'\\).packageManager || 'none'\\)\")"
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).packageManager || 'none'\\)\")",
+      "Bash(gh auth *)",
+      "PowerShell(gh auth status 2>&1)",
+      "PowerShell(ssh -T git@github.com 2>&1)",
+      "PowerShell($ssh = Join-Path $env:USERPROFILE \".ssh\"; if \\(Test-Path $ssh\\) { Get-ChildItem $ssh | Select-Object Name, Length | Format-Table -AutoSize; Write-Output \"--- config ---\"; $cfg = Join-Path $ssh \"config\"; if \\(Test-Path $cfg\\) { Get-Content $cfg } else { Write-Output \"\\(no ~/.ssh/config\\)\" } } else { Write-Output \"\\(no ~/.ssh directory\\)\" })",
+      "PowerShell($key = Join-Path $env:USERPROFILE \".ssh\\\\id_ed25519_arsendev96\"; ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | Select-Object -First 5)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\DoC\\.ssh"
     ]
   }
 }
